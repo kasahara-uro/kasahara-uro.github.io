@@ -1,0 +1,51 @@
+# 毎週月曜 6:00（日本時間）に PubMed から業績を取得し、presentations.csv から発表一覧を作って公開する。
+# 自分で push したときも同じように公開される。
+name: Update publications and deploy
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 21 * * 0"   # UTC 日曜21:00 = JST 月曜6:00
+  workflow_dispatch:        # Actions 画面から手動実行も可能
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  update-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update publications (PubMed) and presentations (CSV)
+        run: python3 scripts/update_site.py
+        continue-on-error: true   # PubMed が落ちていても公開は続ける
+
+      - name: Commit if the lists changed
+        run: |
+          if git diff --quiet; then
+            echo "No new publications."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add index.html
+            git commit -m "Update publication and presentation lists"
+            git push
+          fi
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4
